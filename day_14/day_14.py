@@ -5,7 +5,7 @@ def get_data():
     minx, miny = float('inf'), float('inf')
     maxx, maxy = float('-inf'), float('-inf')
 
-    miny = 0
+    miny = min(0, miny) # Accommodate for 500,0 sand generator
 
     with open('day_14.txt', 'r') as f:
         data_list = f.read().strip().split('\n')
@@ -104,11 +104,14 @@ def GetNextSandPos(rock_map, cur_pos):
     return cur_pos
 
 
-def SandCycle(rock_map, start_col, start_row):
+def SandCycle(rock_map, start_col, start_row, source_storage=None):
+    source_storage = [] if source_storage is None else source_storage
     cur_pos = (start_col, start_row,)
 
     while True:
         next_pos = GetNextSandPos(rock_map, cur_pos)
+        if next_pos == (start_col, start_row):
+            source_storage.append(True)
         if next_pos is None:
             # Overflow achieved
             return True
@@ -131,12 +134,30 @@ def part_1():
         counter += 1
 
     print(PrintedMap(rock_map))
-
     print(counter - 1)
     
 
 def part_2():
-    pass
+    data, minx, maxx, miny, maxy = get_data()
+    maxy += 2
+    total_y_height = maxy - miny + 1
+    minx = min(minx, 500 - total_y_height)
+    maxx = max(maxx, 500 + total_y_height)
+
+    data.append([[minx, maxy], [maxx, maxy]])
+
+    rock_map = MakeMapBlank(minx, maxx, miny, maxy)
+    PopulateMap(rock_map, data, minx, miny)
+    
+    counter = 0
+    source_storage = []
+    while not source_storage:
+        # Perform 1 cycle of sand falling
+        SandCycle(rock_map, 500-minx, 0-miny, source_storage)
+        counter += 1
+
+    print(PrintedMap(rock_map))
+    print(counter)
 
 
 if __name__ == '__main__':
