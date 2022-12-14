@@ -1,3 +1,4 @@
+"""Day 1."""
 from typing import Sequence
 import heapq
 

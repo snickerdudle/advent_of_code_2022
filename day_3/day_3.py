@@ -17,8 +17,8 @@ def get_data() -> Sequence[Sequence[Union[str, Sequence[str]]]]:
     data = [i.strip() for i in data]
     for i, v in enumerate(data):
       data[i] = []
-      data[i].append(v[:len(v)//2])
-      data[i].append(v[len(v)//2:])
+      data[i].append(v[:len(v) // 2])
+      data[i].append(v[len(v) // 2:])
       data[i].append(set(data[i][0]))
       data[i].append(set(data[i][1]))
   return data

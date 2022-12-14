@@ -1,6 +1,6 @@
 """Day 6."""
 from typing import Sequence, Union
-from collections import defaultdict, Counter
+from collections import Counter
 import re
 
 
