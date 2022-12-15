@@ -1,5 +1,6 @@
 """Day 15."""
 import re
+from tqdm import tqdm
 
 target_y = 2_000_000
 max_dim = 4_000_000
@@ -12,12 +13,12 @@ def get_data():
             x_match = re.search(
                 r'x=([\-\d]+).*y=([\-\d]+).*x=([\-\d]+).*y=([\-\d]+)', v)
             sensor_x, sensor_y, beacon_x, beacon_y = (
-                x_match.group(1), 
-                x_match.group(2), 
-                x_match.group(3), 
+                x_match.group(1),
+                x_match.group(2),
+                x_match.group(3),
                 x_match.group(4))
             data[i] = [
-                [int(sensor_x), int(sensor_y)], 
+                [int(sensor_x), int(sensor_y)],
                 [int(beacon_x), int(beacon_y)]]
         return data
 
@@ -68,7 +69,7 @@ def GetPossibleIntervalsFromData(data, all_points, y=target_y, trim=None):
     intervals = []
 
     for sensor, beacon in data:
-        
+
         # Get the manhattan distance. This distance is inclusive (i.e if sensor
         # is at 5, and dist is 2, 3 and 7 are included)
         dist = GetManhattanDistance(sensor, beacon)
@@ -119,7 +120,7 @@ def part_1():
     for sensor, beacon in data:
         all_points.add(tuple(beacon))
         all_points.add(tuple(sensor))
-    
+
     intervals = GetPossibleIntervalsFromData(data, all_points)
 
     final_num = 0
@@ -143,11 +144,16 @@ def part_2():
     possible_rows = {}
 
     # Perform the interval search for every row
-    for row in range(0, max_dim + 1):
+    for row in tqdm(
+        range(0, max_dim + 1),
+        desc='Rows processed',
+        unit='rows',
+        miniters=50000,
+        leave=False):
         intervals = GetPossibleIntervalsFromData(data, all_points, y=row, trim=[0, max_dim])
         if len(intervals) > 1:
-            print(f'Intervals: {intervals}, row: {row}')
             possible_rows[row] = intervals
+    print(possible_rows)
     return possible_rows
 
 
