@@ -40,7 +40,7 @@ def get_data():
             cur_valve = re.match(r'Valve\s(\w+)', v).group(1)
             rate = int(re.search(r'rate=(\d+)', v).group(1))
             neighbors = [i.strip() for i in re.search(r'to\svalve[s]?\s(.+)', v).group(1).split(',')]
-            
+
             cur_valve = GetValve(cur_valve, all_valves)
             cur_valve.UpdateRate(rate)
             for n in neighbors:
@@ -100,7 +100,7 @@ def recursive_search(cur_valve, time_left=30, opened=None, allowed=None):
         # if allowed is None or n.name in set(allowed):
         # Now do the same without opening
         total_released = max(total_released, recursive_search(n, time_left - 1, opened, allowed))
-    
+
     return total_released
 
 
@@ -141,6 +141,7 @@ def part_2():
     divisions = DivideValves([i.name for i in all_valves.values() if i.rate])
 
     num_proc = int(multiprocessing.cpu_count() * 1.5)
+    print(f'Using {num_proc} processes')
     procs = []
     div_len = int(math.ceil(len(divisions) / num_proc))
 
