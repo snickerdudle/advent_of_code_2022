@@ -2,6 +2,9 @@
 import re
 from queue import Queue
 from functools import cache
+import itertools
+import multiprocessing
+import math
 
 
 class Valve:
@@ -89,15 +92,27 @@ def recursive_search(cur_valve, time_left=30, opened=None, allowed=None):
     for n in cur_valve.neighbors:
         # First try to open and progress
         if cur_valve.rate and cur_valve.name not in opened:
-            new_opened = tuple(sorted(opened + (cur_valve.name,)))
-            total_released = max(total_released, (time_left - 1) * cur_valve.rate)
-            if allowed is None or n.name in set(allowed):
-                total_released = max(total_released, (time_left - 1) * cur_valve.rate + recursive_search(n, time_left - 2, new_opened, allowed))
-        if allowed is None or n.name in set(allowed):
-            # Now do the same without opening
-            total_released = max(total_released, recursive_search(n, time_left - 1, opened, allowed))
+            if allowed is None or cur_valve.name in set(allowed):
+                new_opened = tuple(sorted(opened + (cur_valve.name,)))
+                total_released = max(
+                    total_released, 
+                    (time_left - 1) * cur_valve.rate + recursive_search(n, time_left - 2, new_opened, allowed))
+        # if allowed is None or n.name in set(allowed):
+        # Now do the same without opening
+        total_released = max(total_released, recursive_search(n, time_left - 1, opened, allowed))
     
     return total_released
+
+
+def DivideValves(input_array):
+    def partition(pred, iterable):
+        t1, t2 = itertools.tee(iterable)
+        return itertools.filterfalse(pred, t1), filter(pred, t2)
+
+    return [
+        [[x[1] for x in f] for f in partition(lambda x: x[0], zip(pattern, input_array))]
+        for pattern in itertools.product([True, False], repeat=len(input_array))
+        ]
 
 
 def part_1():
@@ -108,14 +123,36 @@ def part_1():
     print(max_flow)
 
 
+def GetTopResult(cur_valve, divisions):
+    max_flow = 0
+
+    for division in divisions:
+        a, b = tuple(sorted(division[0])), tuple(sorted(division[1]))
+        cur_result = (recursive_search(cur_valve, time_left=26, allowed=a) 
+            + recursive_search(cur_valve, time_left=26, allowed=b))
+        max_flow = max(max_flow, cur_result)
+    print(max_flow)
+    return max_flow
+
+
 def part_2():
     all_valves = get_data()
     cur_valve = GetValve('AA', all_valves)
+    divisions = DivideValves([i.name for i in all_valves.values() if i.rate])
 
-    max_flow = recursive_search(cur_valve, allowed=tuple(i.name for i in all_valves.values()))
-    print(max_flow)
+    num_proc = int(multiprocessing.cpu_count() * 1.5)
+    procs = []
+    div_len = int(math.ceil(len(divisions) / num_proc))
 
+    for i in range(num_proc):
+        procs.append(multiprocessing.Process(target=GetTopResult, args=(cur_valve, divisions[i*div_len:(i+1)*div_len],),))
+
+    for i in procs:
+        i.start()
+
+    for i in procs:
+        i.join()
 
 if __name__ == '__main__':
-    # part_1()
+    part_1()
     part_2()
