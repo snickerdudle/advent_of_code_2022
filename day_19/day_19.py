@@ -4,41 +4,40 @@ from collections import defaultdict
 from functools import cache
 from tqdm import tqdm
 import multiprocessing
+import time
 
-
-
-stone_types = ['ore', 'clay', 'obsidian', 'geode']
-blueprints = {}
-# Mapping from stone to max required number to make a robot
-max_reqs = {}
 
 def get_data():
     with open('day_19.txt', 'r') as f:
         data = f.read().strip().split('\n')
-        results = {}
-        for i, v in enumerate(data):
-            scan = re.search(r'Blueprint\s(\d+).*?'
-                + r'Each\sore.*?(\d+)\sore.*?'
-                + r'Each\sclay.*?(\d+)\sore.*?'
-                + r'Each\sobsidian.*?(\d+)\sore.*?(\d+)\sclay.*?'
-                + r'Each\sgeode.*?(\d+)\sore.*?(\d+)\sobsidian.*?',
-                v)
-            cur_id = int(scan.group(1))
-            # Cost is (ore, clay, obsidian, geode)
-            # Robots are (ore, clay, obsidian, geode)
-            robot_cost = {r_idx:{s_idx: 0 for s_idx in range(4)} for r_idx in range(4)}
-            # Ore
-            robot_cost[0][0] = int(scan.group(2))
-            # Clay
-            robot_cost[1][0] = int(scan.group(3))
-            # Obsidian
-            robot_cost[2][0] = int(scan.group(4))
-            robot_cost[2][1] = int(scan.group(5))
-            # Geode
-            robot_cost[3][1] = int(scan.group(6))
-            robot_cost[3][2] = int(scan.group(7))
+    return data
 
-            results[cur_id] = robot_cost
+
+def convert_data_to_blueprints(data):
+    results = {}
+    for i, v in enumerate(data):
+        scan = re.search(r'Blueprint\s(\d+).*?'
+            + r'Each\sore.*?(\d+)\sore.*?'
+            + r'Each\sclay.*?(\d+)\sore.*?'
+            + r'Each\sobsidian.*?(\d+)\sore.*?(\d+)\sclay.*?'
+            + r'Each\sgeode.*?(\d+)\sore.*?(\d+)\sobsidian.*?',
+            v)
+        cur_id = int(scan.group(1))
+        # Cost is (ore, clay, obsidian, geode)
+        # Robots are (ore, clay, obsidian, geode)
+        robot_cost = {r_idx:{s_idx: 0 for s_idx in range(4)} for r_idx in range(4)}
+        # Ore
+        robot_cost[0][0] = int(scan.group(2))
+        # Clay
+        robot_cost[1][0] = int(scan.group(3))
+        # Obsidian
+        robot_cost[2][0] = int(scan.group(4))
+        robot_cost[2][1] = int(scan.group(5))
+        # Geode
+        robot_cost[3][1] = int(scan.group(6))
+        robot_cost[3][2] = int(scan.group(7))
+
+        results[cur_id] = robot_cost
     return results
 
 
@@ -96,7 +95,20 @@ def RecursivelySearchMaxGeodes(blueprint_id, blueprint, max_reqs, cycles, robots
     return max_geodes
 
 
-def GetQualityLevel(blueprint_slice, max_reqs_slice):
+def GetQualityLevel(q):
+    data = q.get(block=True)
+    blueprints = convert_data_to_blueprints(data)
+    # Mapping from stone to max required number to make a robot
+    max_reqs = {}
+
+    for i, b in blueprints.items():
+        # Update the maximum required stones
+        max_reqs[i] = {s_idx: 0 for s_idx in range(4)}
+        for robot_idx in range(4):
+            for stone_idx in range(3):
+                max_reqs[i][stone_idx] = max(max_reqs[i][stone_idx], b[robot_idx][stone_idx])
+            max_reqs[i][3] = float('inf')
+
     # Ore, clay, obsidian, geode
     robots = (1, 0, 0, 0,)
     stones = (0, 0, 0, 0,)
@@ -104,11 +116,11 @@ def GetQualityLevel(blueprint_slice, max_reqs_slice):
     max_blueprint = None
     max_geodes = float('-inf')
     result = 0
-    for blueprint_id, blueprint in blueprint_slice.items():
+    for blueprint_id, blueprint in blueprints.items():
         cur_geodes = RecursivelySearchMaxGeodes(
             blueprint_id,
             blueprint,
-            max_reqs_slice[blueprint_id],
+            max_reqs[blueprint_id],
             cycles = 24,
             robots = robots,
             stones = stones)
@@ -116,36 +128,25 @@ def GetQualityLevel(blueprint_slice, max_reqs_slice):
             max_blueprint = blueprint_id
             max_geodes = cur_geodes
         result += blueprint_id * cur_geodes
-    print(blueprint_id, max_geodes)
-    print(result)
+    print(blueprint_id, max_geodes, result)
 
 
 def part_1():
     data = get_data()
-    for i, b in data.items():
-        blueprints[i] = b
-        max_reqs[i] = {s_idx: 0 for s_idx in range(4)}
-        # Update the maximum required stones
-        for robot_idx in range(4):
-            for stone_idx in range(3):
-                max_reqs[i][stone_idx] = max(max_reqs[i][stone_idx], b[robot_idx][stone_idx])
-            max_reqs[i][3] = float('inf')
 
     num_proc = min(int(multiprocessing.cpu_count() * 1.5), len(data))
     print(f'Using {num_proc} processes')
     procs = []
-    blueprint_slices = [{} for i in range(num_proc)]
-    max_reqs_slices = [{} for i in range(num_proc)]
 
-    for b_idx in blueprints:
-        blueprint_slices[b_idx%num_proc][b_idx] = blueprints[b_idx]
-        max_reqs_slices[b_idx%num_proc][b_idx] = max_reqs[b_idx]
+    multiprocessing.set_start_method('fork')
 
     for i in range(num_proc):
-        procs.append(multiprocessing.Process(target=GetQualityLevel, args=(blueprint_slices[i], max_reqs_slices[i],)))
+        q = multiprocessing.Queue()
+        q.put([data[ii] for ii in range(len(data)) if ii % num_proc == i])
+        procs.append(multiprocessing.Process(target=GetQualityLevel, args=(q,)))
 
-    for i in procs:
-        i.start()
+    for p in procs:
+        p.start()
 
     for i in procs:
         i.join()
