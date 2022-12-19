@@ -7,6 +7,9 @@ import multiprocessing
 import time
 
 
+multiprocessing.set_start_method('fork')
+
+
 def get_data():
     with open('day_19.txt', 'r') as f:
         data = f.read().strip().split('\n')
@@ -67,11 +70,22 @@ def HarvestAllRobots(robots, stones):
         stones[robot_idx] += num_robots
     return tuple(stones)
 
+
+def GetRidOfResources(stones, max_reqs):
+    stones = list(stones)
+    for stone_idx in range(3):
+        if stones[stone_idx] > max_reqs[stone_idx] * 2:
+            stones[stone_idx] = max_reqs[stone_idx] * 2
+    return tuple(stones)
+
+
 @cache
 def RecursivelySearchMaxGeodes(blueprint_id, blueprint, max_reqs, cycles, robots, stones):
     max_geodes = stones[-1]
     if not cycles:
         return max_geodes
+
+    stones = GetRidOfResources(stones, max_reqs)
 
     possible_robots = GetPossibleRobotsToBuild(blueprint, robots, stones)
     # Try building a robot
@@ -151,7 +165,6 @@ def part_1():
     print(f'Using {num_proc} processes')
     procs = []
 
-    multiprocessing.set_start_method('fork')
     responded = {i:False for i in range(num_proc)}
     pipes = []
 
@@ -188,7 +201,6 @@ def part_2():
     print(f'Using {num_proc} processes')
     procs = []
 
-    multiprocessing.set_start_method('fork')
     responded = {i:False for i in range(num_proc)}
     pipes = []
 
@@ -213,10 +225,10 @@ def part_2():
             r = pipes[i].get(False)
             if r is not None:
                 responded[i] = True
-                results *= r[-1]
+                results *= r[-2]
     print('Final result:', results)
 
 
 if __name__ == '__main__':
-    # part_1()
+    part_1()
     part_2()
