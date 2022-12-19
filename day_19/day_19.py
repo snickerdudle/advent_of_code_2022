@@ -10,7 +10,7 @@ import multiprocessing
 stone_types = ['ore', 'clay', 'obsidian', 'geode']
 blueprints = {}
 # Mapping from stone to max required number to make a robot
-max_reqs = defaultdict(lambda: defaultdict(int))
+max_reqs = {}
 
 def get_data():
     with open('day_19.txt', 'r') as f:
@@ -26,7 +26,7 @@ def get_data():
             cur_id = int(scan.group(1))
             # Cost is (ore, clay, obsidian, geode)
             # Robots are (ore, clay, obsidian, geode)
-            robot_cost = defaultdict(lambda: defaultdict(int))
+            robot_cost = {r_idx:{s_idx: 0 for s_idx in range(4)} for r_idx in range(4)}
             # Ore
             robot_cost[0][0] = int(scan.group(2))
             # Clay
@@ -67,9 +67,7 @@ def HarvestAllRobots(robots, stones):
     return tuple(stones)
 
 
-@cache
-def RecursivelySearchMaxGeodes(blueprint_id, cycles, robots, stones):
-    blueprint = blueprints[blueprint_id]
+def RecursivelySearchMaxGeodes(blueprint_id, blueprint, max_reqs, cycles, robots, stones):
     max_geodes = stones[-1]
     if not cycles:
         return max_geodes
@@ -77,7 +75,7 @@ def RecursivelySearchMaxGeodes(blueprint_id, cycles, robots, stones):
     # Try building a robot
     for robot_idx in GetPossibleRobotsToBuild(blueprint, robots, stones):
         # Check if we're at max required robot capacity
-        if max_reqs[blueprint_id][robot_idx] <= robots[robot_idx]:
+        if max_reqs[robot_idx] <= robots[robot_idx]:
             # If the maximum per-turn number of required stones is equal or is
             # less than the number of existing per-turn production units, prune
             # the tree here.
@@ -89,25 +87,16 @@ def RecursivelySearchMaxGeodes(blueprint_id, cycles, robots, stones):
         new_robots = list(robots)
         new_robots[robot_idx] += 1
         new_robots = tuple(new_robots)
-        max_geodes = max(max_geodes, RecursivelySearchMaxGeodes(blueprint_id, cycles - 1, new_robots, new_stones))
+        max_geodes = max(max_geodes, RecursivelySearchMaxGeodes(blueprint_id, blueprint, max_reqs, cycles - 1, new_robots, new_stones))
 
     # Harvest using existing robots
     new_stones = HarvestAllRobots(robots, stones)
-    max_geodes = max(max_geodes, RecursivelySearchMaxGeodes(blueprint_id, cycles - 1, robots, new_stones))
+    max_geodes = max(max_geodes, RecursivelySearchMaxGeodes(blueprint_id, blueprint, max_reqs, cycles - 1, robots, new_stones))
 
     return max_geodes
 
 
-def part_1():
-    data = get_data()
-    for i, b in data.items():
-        blueprints[i] = b
-        # Update the maximum required stones
-        for robot_idx in range(4):
-            for stone_idx in range(3):
-                max_reqs[i][stone_idx] = max(max_reqs[i][stone_idx], b[robot_idx][stone_idx])
-            max_reqs[i][3] = float('inf')
-
+def GetQualityLevel(blueprint_slice, max_reqs_slice):
     # Ore, clay, obsidian, geode
     robots = (1, 0, 0, 0,)
     stones = (0, 0, 0, 0,)
@@ -115,9 +104,11 @@ def part_1():
     max_blueprint = None
     max_geodes = float('-inf')
     result = 0
-    for blueprint_id in tqdm(blueprints):
+    for blueprint_id, blueprint in blueprint_slice.items():
         cur_geodes = RecursivelySearchMaxGeodes(
-            blueprint_id, 
+            blueprint_id,
+            blueprint,
+            max_reqs_slice[blueprint_id],
             cycles = 24,
             robots = robots,
             stones = stones)
@@ -127,6 +118,37 @@ def part_1():
         result += blueprint_id * cur_geodes
     print(blueprint_id, max_geodes)
     print(result)
+
+
+def part_1():
+    data = get_data()
+    for i, b in data.items():
+        blueprints[i] = b
+        max_reqs[i] = {s_idx: 0 for s_idx in range(4)}
+        # Update the maximum required stones
+        for robot_idx in range(4):
+            for stone_idx in range(3):
+                max_reqs[i][stone_idx] = max(max_reqs[i][stone_idx], b[robot_idx][stone_idx])
+            max_reqs[i][3] = float('inf')
+
+    num_proc = min(int(multiprocessing.cpu_count() * 1.5), len(data))
+    print(f'Using {num_proc} processes')
+    procs = []
+    blueprint_slices = [{} for i in range(num_proc)]
+    max_reqs_slices = [{} for i in range(num_proc)]
+
+    for b_idx in blueprints:
+        blueprint_slices[b_idx%num_proc][b_idx] = blueprints[b_idx]
+        max_reqs_slices[b_idx%num_proc][b_idx] = max_reqs[b_idx]
+
+    for i in range(num_proc):
+        procs.append(multiprocessing.Process(target=GetQualityLevel, args=(blueprint_slices[i], max_reqs_slices[i],)))
+
+    for i in procs:
+        i.start()
+
+    for i in procs:
+        i.join()
 
 
 def part_2():
