@@ -73,8 +73,9 @@ def RecursivelySearchMaxGeodes(blueprint_id, blueprint, max_reqs, cycles, robots
     if not cycles:
         return max_geodes
 
+    possible_robots = GetPossibleRobotsToBuild(blueprint, robots, stones)
     # Try building a robot
-    for robot_idx in GetPossibleRobotsToBuild(blueprint, robots, stones):
+    for robot_idx in possible_robots:
         # Check if we're at max required robot capacity
         if max_reqs[robot_idx] <= robots[robot_idx]:
             # If the maximum per-turn number of required stones is equal or is
@@ -92,16 +93,20 @@ def RecursivelySearchMaxGeodes(blueprint_id, blueprint, max_reqs, cycles, robots
         if new_geodes > max_geodes:
             max_geodes = new_geodes
 
-    # Harvest using existing robots
-    new_stones = HarvestAllRobots(robots, stones)
-    new_geodes = RecursivelySearchMaxGeodes(blueprint_id, blueprint, max_reqs, cycles - 1, robots, new_stones)
-    if new_geodes > max_geodes:
-        max_geodes = new_geodes
+    if 3 not in possible_robots:
+        # Harvest using existing robots
+        new_stones = HarvestAllRobots(robots, stones)
+        new_geodes = RecursivelySearchMaxGeodes(blueprint_id, blueprint, max_reqs, cycles - 1, robots, new_stones)
+        if new_geodes > max_geodes:
+            max_geodes = new_geodes
+    else:
+        # If we can build a geode robot, we should
+        pass
 
     return max_geodes
 
 
-def GetQualityLevel(mosi, miso):
+def GetQualityLevel(mosi, miso, max_time=24):
     data = mosi.get(block=True)
     blueprints = convert_data_to_blueprints(data)
     # Mapping from stone to max required number to make a robot
@@ -128,7 +133,7 @@ def GetQualityLevel(mosi, miso):
             blueprint_id,
             blueprint,
             max_reqs[blueprint_id],
-            cycles = 24,
+            cycles = max_time,
             robots = robots,
             stones = stones)
         if cur_geodes > max_geodes:
@@ -177,8 +182,41 @@ def part_1():
 
 def part_2():
     data = get_data()
+    data = data[:3]
+
+    num_proc = min(int(multiprocessing.cpu_count() * 1.5), len(data))
+    print(f'Using {num_proc} processes')
+    procs = []
+
+    multiprocessing.set_start_method('fork')
+    responded = {i:False for i in range(num_proc)}
+    pipes = []
+
+    for i in range(num_proc):
+        mosi = multiprocessing.Queue()
+        miso = multiprocessing.Queue()
+        pipes.append(miso)
+        mosi.put([data[ii] for ii in range(len(data)) if ii % num_proc == i])
+        procs.append(multiprocessing.Process(target=GetQualityLevel, args=(mosi, miso, 32,)))
+
+    for p in procs:
+        p.start()
+
+    for i in procs:
+        i.join()
+
+    results = 1
+    while not all(responded.values()):
+        for i in responded:
+            if responded[i]:
+                continue
+            r = pipes[i].get(False)
+            if r is not None:
+                responded[i] = True
+                results *= r[-1]
+    print('Final result:', results)
 
 
 if __name__ == '__main__':
-    part_1()
+    # part_1()
     part_2()
