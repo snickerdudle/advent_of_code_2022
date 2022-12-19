@@ -25,7 +25,7 @@ def convert_data_to_blueprints(data):
         cur_id = int(scan.group(1))
         # Cost is (ore, clay, obsidian, geode)
         # Robots are (ore, clay, obsidian, geode)
-        robot_cost = {r_idx:{s_idx: 0 for s_idx in range(4)} for r_idx in range(4)}
+        robot_cost = [[0 for s_idx in range(4)] for r_idx in range(4)]
         # Ore
         robot_cost[0][0] = int(scan.group(2))
         # Clay
@@ -34,8 +34,10 @@ def convert_data_to_blueprints(data):
         robot_cost[2][0] = int(scan.group(4))
         robot_cost[2][1] = int(scan.group(5))
         # Geode
-        robot_cost[3][1] = int(scan.group(6))
+        robot_cost[3][0] = int(scan.group(6))
         robot_cost[3][2] = int(scan.group(7))
+
+        robot_cost = tuple(tuple(i) for i in robot_cost)
 
         results[cur_id] = robot_cost
     return results
@@ -65,7 +67,7 @@ def HarvestAllRobots(robots, stones):
         stones[robot_idx] += num_robots
     return tuple(stones)
 
-
+@cache
 def RecursivelySearchMaxGeodes(blueprint_id, blueprint, max_reqs, cycles, robots, stones):
     max_geodes = stones[-1]
     if not cycles:
@@ -86,28 +88,33 @@ def RecursivelySearchMaxGeodes(blueprint_id, blueprint, max_reqs, cycles, robots
         new_robots = list(robots)
         new_robots[robot_idx] += 1
         new_robots = tuple(new_robots)
-        max_geodes = max(max_geodes, RecursivelySearchMaxGeodes(blueprint_id, blueprint, max_reqs, cycles - 1, new_robots, new_stones))
+        new_geodes = RecursivelySearchMaxGeodes(blueprint_id, blueprint, max_reqs, cycles - 1, new_robots, new_stones)
+        if new_geodes > max_geodes:
+            max_geodes = new_geodes
 
     # Harvest using existing robots
     new_stones = HarvestAllRobots(robots, stones)
-    max_geodes = max(max_geodes, RecursivelySearchMaxGeodes(blueprint_id, blueprint, max_reqs, cycles - 1, robots, new_stones))
+    new_geodes = RecursivelySearchMaxGeodes(blueprint_id, blueprint, max_reqs, cycles - 1, robots, new_stones)
+    if new_geodes > max_geodes:
+        max_geodes = new_geodes
 
     return max_geodes
 
 
-def GetQualityLevel(q):
-    data = q.get(block=True)
+def GetQualityLevel(mosi, miso):
+    data = mosi.get(block=True)
     blueprints = convert_data_to_blueprints(data)
     # Mapping from stone to max required number to make a robot
     max_reqs = {}
 
-    for i, b in blueprints.items():
+    for i, blueprint in blueprints.items():
         # Update the maximum required stones
-        max_reqs[i] = {s_idx: 0 for s_idx in range(4)}
+        max_reqs[i] = [0, 0, 0, 0]
         for robot_idx in range(4):
             for stone_idx in range(3):
-                max_reqs[i][stone_idx] = max(max_reqs[i][stone_idx], b[robot_idx][stone_idx])
+                max_reqs[i][stone_idx] = max(max_reqs[i][stone_idx], blueprint[robot_idx][stone_idx])
             max_reqs[i][3] = float('inf')
+        max_reqs[i] = tuple(max_reqs[i])
 
     # Ore, clay, obsidian, geode
     robots = (1, 0, 0, 0,)
@@ -128,7 +135,8 @@ def GetQualityLevel(q):
             max_blueprint = blueprint_id
             max_geodes = cur_geodes
         result += blueprint_id * cur_geodes
-    print(blueprint_id, max_geodes, result)
+    print(max_blueprint, max_geodes, result)
+    miso.put((max_blueprint, max_geodes, result,))
 
 
 def part_1():
@@ -139,17 +147,32 @@ def part_1():
     procs = []
 
     multiprocessing.set_start_method('fork')
+    responded = {i:False for i in range(num_proc)}
+    pipes = []
 
     for i in range(num_proc):
-        q = multiprocessing.Queue()
-        q.put([data[ii] for ii in range(len(data)) if ii % num_proc == i])
-        procs.append(multiprocessing.Process(target=GetQualityLevel, args=(q,)))
+        mosi = multiprocessing.Queue()
+        miso = multiprocessing.Queue()
+        pipes.append(miso)
+        mosi.put([data[ii] for ii in range(len(data)) if ii % num_proc == i])
+        procs.append(multiprocessing.Process(target=GetQualityLevel, args=(mosi, miso,)))
 
     for p in procs:
         p.start()
 
     for i in procs:
         i.join()
+
+    results = 0
+    while not all(responded.values()):
+        for i in responded:
+            if responded[i]:
+                continue
+            r = pipes[i].get(False)
+            if r is not None:
+                responded[i] = True
+                results += r[-1]
+    print('Final result:', results)
 
 
 def part_2():
